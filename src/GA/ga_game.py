@@ -109,6 +109,7 @@
 GA Simulation for Flappy Bird using a Genetic Algorithm.
 This module runs a generation loop where a population of AI-controlled birds
 (evolving via crossover and mutation) try to survive by avoiding pipes.
+It uses the same assets and appearance logic (for birds and pipes) as the manual game.
 """
 
 import pygame, random, sys
@@ -119,45 +120,54 @@ from .genetic_algorithm import evolve
 # Simulation constants
 GAME_SPEED = 15
 PIPE_WIDTH = 80
+PIPE_HEIGHT = 500   # same as in the manual game
 PIPE_GAP = 150
 FPS = 30
 
+# Load shared assets
+BACKGROUND = pygame.image.load('assets/assets/sprites/background-day.png')
+BACKGROUND = pygame.transform.scale(BACKGROUND, (SCREEN_WIDTH, SCREEN_HEIGHT))
+wing = 'assets/assets/audio/wing.wav'
+hit = 'assets/assets/audio/hit.wav'
+pygame.mixer.init()
+
 class Pipe(pygame.sprite.Sprite):
-    def __init__(self, xpos):
-        super().__init__()
-        self.x = xpos
-        # Random height such that there's room for the gap
-        self.height = random.randint(100, SCREEN_HEIGHT - PIPE_GAP - 100)
-        self.gap_center = self.height + PIPE_GAP / 2
-        self.passed = False
-        # Create rectangles for top and bottom pipes
-        self.top_rect = pygame.Rect(xpos, 0, PIPE_WIDTH, self.height)
-        self.bottom_rect = pygame.Rect(xpos, self.height + PIPE_GAP, PIPE_WIDTH, SCREEN_HEIGHT - (self.height + PIPE_GAP))
-        # A tracking rect for overall horizontal position
-        self.rect = pygame.Rect(xpos, 0, PIPE_WIDTH, SCREEN_HEIGHT)
+    def __init__(self, inverted, xpos, ysize):
+        pygame.sprite.Sprite.__init__(self)
+        self.inverted = inverted
+        # Load the pipe image and scale it as in the manual game
+        self.image = pygame.image.load('assets/assets/sprites/pipe-green.png').convert_alpha()
+        self.image = pygame.transform.scale(self.image, (PIPE_WIDTH, PIPE_HEIGHT))
+        self.rect = self.image.get_rect()
+        self.rect.x = xpos
+        if inverted:
+            self.image = pygame.transform.flip(self.image, False, True)
+            self.rect.y = - (self.rect.height - ysize)
+        else:
+            self.rect.y = SCREEN_HEIGHT - ysize
+            self.passed = False  # for score tracking (if needed)
+        self.mask = pygame.mask.from_surface(self.image)
 
     def update(self):
-        self.top_rect.x -= GAME_SPEED
-        self.bottom_rect.x -= GAME_SPEED
         self.rect.x -= GAME_SPEED
 
-    def draw(self, surface):
-        pygame.draw.rect(surface, (0, 255, 0), self.top_rect)
-        pygame.draw.rect(surface, (0, 255, 0), self.bottom_rect)
-
-def get_random_pipe(xpos):
-    """Return a new Pipe object with its gap randomized."""
-    return Pipe(xpos)
+def get_random_pipes(xpos):
+    """Return a tuple of (normal_pipe, inverted_pipe) with a randomized gap."""
+    size = random.randint(100, 300)
+    pipe = Pipe(False, xpos, size)
+    pipe_inverted = Pipe(True, xpos, SCREEN_HEIGHT - size - PIPE_GAP)
+    return pipe, pipe_inverted
 
 def run_generation(population, screen, clock):
     """
     Run one generation of the GA simulation.
+    Uses the same background as the manual game.
     Returns the surviving population.
     """
-    # Create a sprite group for drawing birds
-    birds = pygame.sprite.Group(population)
-    # Start with one pipe off the right of the screen
-    pipes = [get_random_pipe(SCREEN_WIDTH + 200)]
+    # Start with a pair of pipes off the right of the screen
+    pipes = []
+    pipes_pair = get_random_pipes(SCREEN_WIDTH + 200)
+    pipes.extend(pipes_pair)
     generation_running = True
 
     while generation_running:
@@ -167,13 +177,14 @@ def run_generation(population, screen, clock):
                 pygame.quit()
                 sys.exit()
 
-        # Update pipes and add a new pipe if needed
+        # Update pipes; add new pipe pair if the last pipe is within the screen
         for pipe in pipes:
             pipe.update()
         if pipes[-1].rect.x < SCREEN_WIDTH:
-            pipes.append(get_random_pipe(SCREEN_WIDTH + 200))
+            new_pair = get_random_pipes(SCREEN_WIDTH + 200)
+            pipes.extend(new_pair)
 
-        # Process each bird: let it decide based on the nearest pipe and update
+        # Process each bird: let it decide based on the nearest pipe and update its state
         for bird in population:
             if bird.rect.y < 0 or bird.rect.y > SCREEN_HEIGHT:
                 bird.kill()  # Out-of-bounds → mark as dead
@@ -184,19 +195,21 @@ def run_generation(population, screen, clock):
                         break
                 bird.update()
 
-        # Collision detection: if a bird hits any pipe, it dies
+        # Collision detection: if a bird collides with any pipe, it dies
         for bird in population:
             for pipe in pipes:
-                if bird.rect.colliderect(pipe.top_rect) or bird.rect.colliderect(pipe.bottom_rect):
+                if bird.rect.colliderect(pipe.rect):
+                    pygame.mixer.music.load(hit)
+                    pygame.mixer.music.play()
                     bird.kill()
 
         # Remove dead birds from the population list
         population = [bird for bird in population if bird.alive()]
 
-        # Draw background and sprites
-        screen.fill((135, 206, 235))  # Sky blue background
+        # Draw the background and all sprites using shared assets
+        screen.blit(BACKGROUND, (0, 0))
         for pipe in pipes:
-            pipe.draw(screen)
+            screen.blit(pipe.image, pipe.rect)
         birds = pygame.sprite.Group(population)
         birds.draw(screen)
         pygame.display.update()
