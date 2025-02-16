@@ -1,8 +1,8 @@
 import sys
 import pygame
 from pygame.locals import *
-from src.Game import main_game   # your existing manual game module
-from src.GA import ga_game       # the GA simulation module
+from src.Game import main_game   # Ensure main_game.py is properly guarded
+from src.GA import ga_game       # Ensure ga_game.py is properly guarded
 
 def main():
     pygame.init()
