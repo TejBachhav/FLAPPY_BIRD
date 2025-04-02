@@ -148,7 +148,7 @@ def ga_main():
     Main function for running the GA training simulation.
     Evolves the bird population over successive generations.
     """
-    population_size = 50
+    population_size = 500
     population = [GABird() for _ in range(population_size)]
     clock = pygame.time.Clock()
     generation = 0
